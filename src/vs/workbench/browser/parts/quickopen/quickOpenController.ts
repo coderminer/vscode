@@ -55,6 +55,7 @@ import { FileKind, IFileService } from 'vs/platform/files/common/files';
 import { scoreItem, ScorerCache, compareItemsByScore, prepareQuery } from 'vs/base/parts/quickopen/common/quickOpenScorer';
 import { getBaseLabel } from 'vs/base/common/labels';
 import { WorkbenchTree } from 'vs/platform/list/browser/listService';
+import { IMatch } from 'vs/base/common/filters';
 
 const HELP_PREFIX = '?';
 
@@ -434,9 +435,9 @@ export class QuickOpenController extends Component implements IQuickOpenService 
 						// Filter by value
 						else {
 							entries.forEach(entry => {
-								const labelHighlights = filters.matchesFuzzy(value, entry.getLabel());
-								const descriptionHighlights = options.matchOnDescription && filters.matchesFuzzy(value, entry.getDescription());
-								const detailHighlights = options.matchOnDetail && entry.getDetail() && filters.matchesFuzzy(value, entry.getDetail());
+								const labelHighlights = this.matchesFuzzyOcticonAware(value, entry.getLabel());
+								const descriptionHighlights = options.matchOnDescription && this.matchesFuzzyOcticonAware(value, entry.getDescription());
+								const detailHighlights = options.matchOnDetail && entry.getDetail() && this.matchesFuzzyOcticonAware(value, entry.getDetail());
 
 								if (entry.shouldAlwaysShow() || labelHighlights || descriptionHighlights || detailHighlights) {
 									entry.setHighlights(labelHighlights, descriptionHighlights, detailHighlights);
@@ -496,6 +497,74 @@ export class QuickOpenController extends Component implements IQuickOpenService 
 				this.pickOpenWidget.show(new QuickOpenModel());
 			}
 		});
+	}
+
+	private matchesFuzzyOcticonAware(search: string, target: string): IMatch[] {
+		let char: string;
+		let nextChar: string;
+		let offset = 0;
+		let octiconStart = -1;
+		let potentialOcticonValue: string = '';
+		let targetWithoutOcticons: string = '';
+
+		let currentOcticonOffset = 0;
+		const octiconOffsets: number[] = [];
+
+		// example: $(file-symlink-file) my cool $(file-symlink-file) entry
+		while (offset < target.length) {
+			char = target[offset];
+			nextChar = target[offset + 1];
+
+			// beginning of octicon
+			if (char === '$' && nextChar === '(') {
+				octiconStart = offset;
+				offset++; // jump over '('
+
+				// if we had a previous potential octicon value without
+				// the closing ')', it was actually not an octicon and
+				// so we have to add it to the actual value
+				if (potentialOcticonValue) {
+					targetWithoutOcticons += potentialOcticonValue;
+					potentialOcticonValue += '$(';
+				}
+			}
+
+			// end of octicon
+			else if (char === ')' && octiconStart >= 0) {
+				currentOcticonOffset += (offset - octiconStart);
+				octiconStart = -1;
+				potentialOcticonValue = '';
+			}
+
+			// any value outside of octicons
+			else if (octiconStart === -1) {
+				targetWithoutOcticons += char;
+				octiconOffsets[targetWithoutOcticons.length - 1] = currentOcticonOffset;
+			}
+
+			offset++;
+		}
+
+		// if we had a previous potential octicon value without
+		// the closing ')', it was actually not an octicon and
+		// so we have to add it to the actual value
+		if (potentialOcticonValue) {
+			targetWithoutOcticons += potentialOcticonValue;
+		}
+
+		// match on value without octicons
+		const matches = filters.matchesFuzzy(search, targetWithoutOcticons);
+
+		// Map matches back to offsets with octicons
+		if (matches) {
+			for (let i = 0; i < matches.length; i++) {
+				const octiconOffset = octiconOffsets[matches[i].start];
+				matches[i].start += octiconOffset;
+				matches[i].end += octiconOffset;
+			}
+		}
+
+		return matches;
 	}
 
 	public accept(): void {

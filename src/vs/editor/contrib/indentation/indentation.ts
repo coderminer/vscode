@@ -270,7 +270,7 @@ export class IndentUsingSpaces extends ChangeIndentationSizeAction {
 	constructor() {
 		super(true, {
 			id: IndentUsingSpaces.ID,
-			label: nls.localize('indentUsingSpaces', "Indent Using Spaces"),
+			label: nls.localize('indentUsingSpaces', "$(file-symlink-file) Indent $(file-symlink-file) Using $(file-symlink-file) Spaces $(file-symlink-file)"),
 			alias: 'Indent Using Spaces',
 			precondition: null
 		});
